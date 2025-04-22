@@ -1,0 +1,28 @@
+name: Deploy Website to EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup SSH Key
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+      run: |
+        echo "$SSH_PRIVATE_KEY" > key.pem
+        chmod 600 key.pem
+
+    - name: Copy index.html to EC2
+      env:
+        HOST: ${{ secrets.EC2_HOST }}
+        USER: ${{ secrets.EC2_USER }}
+      run: |
+        scp -i key.pem -o StrictHostKeyChecking=no index.html $USER@$HOST:/tmp/index.html
+        ssh -i key.pem -o StrictHostKeyChecking=no $USER@$HOST 'sudo mv /tmp/index.html /var/www/html/index.html && sudo systemctl restart apache2'
