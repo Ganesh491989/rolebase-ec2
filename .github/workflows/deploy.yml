@@ -3,15 +3,15 @@ name: Deploy to EC2 via SSM
 on:
   push:
     branches: [main]
-  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+  workflow_dispatch:  # Manual trigger from GitHub UI
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     permissions:
-      id-token: write     # Required for GitHub OIDC authentication
-      contents: read      # Required to access the repository content
+      id-token: write     # Needed for GitHub OIDC auth
+      contents: read      # Allows checkout of code
 
     steps:
     - name: Checkout code
@@ -21,13 +21,18 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v2
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-        aws-region: us-east-2 # Replace with your EC2's region if different
+        aws-region: us-east-2  # Use your EC2 region
 
     - name: Deploy index.html to EC2 via SSM
       run: |
+        # Encode index.html to Base64
+        ENCODED=$(base64 index.html)
+
+        # Send the file to EC2 and restart Apache
         aws ssm send-command \
           --document-name "AWS-RunShellScript" \
           --comment "Deploy index.html from GitHub Actions" \
           --instance-ids i-09cdd0bfff5d5364b \
-          --parameters 'commands=["echo '\''$(cat index.html)'\'' | sudo tee /var/www/html/index.html > /dev/null", "sudo systemctl restart apache2"]' \
+          --parameters "commands=[\"echo '$ENCODED' | base64 -d | sudo tee /var/www/html/index.html > /dev/null\", \"sudo systemctl restart apache2\"]" \
+          --region us-east-2 \
           --output text
