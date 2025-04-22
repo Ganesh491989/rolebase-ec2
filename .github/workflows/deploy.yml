@@ -1,28 +1,33 @@
-name: Deploy Website to EC2
+name: Deploy to EC2 via SSM
 
 on:
   push:
     branches: [main]
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    permissions:
+      id-token: write     # Required for GitHub OIDC authentication
+      contents: read      # Required to access the repository content
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Setup SSH Key
-      env:
-        SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
-      run: |
-        echo "$SSH_PRIVATE_KEY" > key.pem
-        chmod 600 key.pem
+    - name: Configure AWS credentials using OIDC
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: us-east-2 # Replace with your EC2's region if different
 
-    - name: Copy index.html to EC2
-      env:
-        HOST: ${{ secrets.EC2_HOST }}
-        USER: ${{ secrets.EC2_USER }}
+    - name: Deploy index.html to EC2 via SSM
       run: |
-        scp -i key.pem -o StrictHostKeyChecking=no index.html $USER@$HOST:/tmp/index.html
-        ssh -i key.pem -o StrictHostKeyChecking=no $USER@$HOST 'sudo mv /tmp/index.html /var/www/html/index.html && sudo systemctl restart apache2'
+        aws ssm send-command \
+          --document-name "AWS-RunShellScript" \
+          --comment "Deploy index.html from GitHub Actions" \
+          --instance-ids i-09cdd0bfff5d5364b \
+          --parameters 'commands=["echo '\''$(cat index.html)'\'' | sudo tee /var/www/html/index.html > /dev/null", "sudo systemctl restart apache2"]' \
+          --output text
